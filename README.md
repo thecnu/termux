@@ -1,1 +1,1 @@
-# termux-auto
+# termux-autoinstaller
