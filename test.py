@@ -1,11 +1,8 @@
 import os
 import time
 import logging
-import datetime
 import requests
 import subprocess
-
-#adb shell nohup am instrument -w io.appium.uiautomator2.server.test/androidx.test.runner.AndroidJUnitRunner
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s.%(msecs)03d [%(levelname)s]: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -16,14 +13,10 @@ config = {
     "appActivity": "com.google.android.apps.chrome.Main"
 }
 
-isAndroid = 'ANDROID_STORAGE' in os.environ or 'ANDROID_ROOT' in os.environ
-
 def command(type, *args, **kwargs):
     requestData = kwargs.get('data', None)
     sessionId = kwargs.get('sessionId', None)
     elementId = kwargs.get('elementId', None)
-
-    #if status == 200:
 
     if type == "status":
         requestMethod = "get"
@@ -62,7 +55,7 @@ def command(type, *args, **kwargs):
 def permission(sessionId):
     try:
         time.sleep(1)
-        logging.info("izin bekleme click")
+        logging.info("İzin bekleme click")
 
         # XPath ifadesiyle eşleşen öğeleri bul
         elements = command("findElement", sessionId=sessionId, data={
@@ -71,9 +64,10 @@ def permission(sessionId):
         })["value"]["ELEMENT"]
 
         command("clickElement", sessionId=sessionId, elementId=elements)
-        logging.info("izin verildi")
+        logging.info("İzin verildi")
         return True
-    except:
+    except Exception as e:
+        logging.error("İzin alınırken bir hata oluştu: {}".format(str(e)))
         return False
 
 def run():
@@ -81,33 +75,32 @@ def run():
     subprocess.Popen(["su -c 'nohup am instrument -w io.appium.uiautomator2.server.test/androidx.test.runner.AndroidJUnitRunner'"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
 
     time.sleep(10)
-    logging.info("checking is uiautomator server running")
+    logging.info("UIAutomator serverının çalışıp çalışmadığını kontrol ediliyor.")
     if not command('status'):
-        raise Exception("UIAutomator server not running.")
+        raise Exception("UIAutomator sunucusu çalışmıyor.")
 
-    logging.info("create new session")
+    logging.info("Yeni bir oturum oluşturuluyor.")
     sessionId = command("createSession", data={
-        "capabilities": {
-        }
+        "capabilities": {}
     })["sessionId"]
 
-    logging.info(str(sessionId))
+    logging.info("Oturum ID'si: {}".format(sessionId))
     while True:
         os.system("su -c 'uiautomator dump view.xml'")
 
-        if permission == True:
+        if permission(sessionId):
             time.sleep(2)
-            logging.info("true")
-            permission(sessionId)
+            logging.info("İzin alındı.")
         else:
-            logging.info("false")
+            logging.info("İzin alınamadı. Tekrar denenecek.")
             time.sleep(5)
-            permission(sessionId)
 
 try:
-    run()
-
-except Exception as e:
-    logging.error(str(e))
-    run()
-
+    while True:
+        try:
+            run()
+        except Exception as e:
+            logging.error(str(e))
+            time.sleep(5)  # Hata oluştuğunda bekleme süresi ekleyebilirsiniz.
+except KeyboardInterrupt:
+    logging.info("Program sonlandırıldı.")
