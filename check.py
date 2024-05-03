@@ -4,8 +4,11 @@ import logging
 import datetime
 import requests
 import subprocess
+import asyncio
 
-#adb shell nohup am instrument -w io.appium.uiautomator2.server.test/androidx.test.runner.AndroidJUnitRunner
+# adb shell nohup am instrument -w io.appium.uiautomator2.server.test/androidx.test.runner.AndroidJUnitRunner
+
+# su -c pm grant com.termux android.permission.WRITE_SECURE_SETTINGS
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s.%(msecs)03d [%(levelname)s]: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -18,13 +21,10 @@ config = {
 
 isAndroid = 'ANDROID_STORAGE' in os.environ or 'ANDROID_ROOT' in os.environ
 
-
-def command(type, *args, **kwargs):
+async def command(type, *args, **kwargs):
     requestData = kwargs.get('data', None)
     sessionId = kwargs.get('sessionId', None)
     elementId = kwargs.get('elementId', None)
-
-    #if status == 200:
 
     if type == "status":
         requestMethod = "get"
@@ -59,58 +59,51 @@ def command(type, *args, **kwargs):
     else:
         raise Exception(r.json()["value"]["error"])
 
-
-def permission(sessionId):
+async def permission(sessionId):
     try:
-        time.sleep(1)
+        await asyncio.sleep(1)
         logging.info("izin bekleme click")
 
         # XPath ifadesiyle eşleşen öğeleri bul
-        elements = command("findElement", sessionId=sessionId, data={
-                "strategy": "xpath",
-                "selector": "//android.widget.Button[@resource-id='android:id/button1']"
-        })["value"]["ELEMENT"]
+        elements = (await command("findElement", sessionId=sessionId, data={
+            "strategy": "xpath",
+            "selector": "//android.widget.Button[@resource-id='android:id/button1']"
+        }))["value"]["ELEMENT"]
 
-        command("clickElement", sessionId=sessionId, elementId=elements)
+        await command("clickElement", sessionId=sessionId, elementId=elements)
         logging.info("izin verildi")
         return True
-    except:
+    except Exception as e:
+        logging.error(f"Permission error: {e}")
         return False
 
-def run():
-    isAndroid = 'ANDROID_STORAGE' in os.environ or 'ANDROID_ROOT' in os.environ
+async def run():
+    await asyncio.create_subprocess_shell("su -c 'am force-stop io.appium.uiautomator2.server.test'")
+    await asyncio.create_subprocess_shell("su -c 'nohup am instrument -w io.appium.uiautomator2.server.test/androidx.test.runner.AndroidJUnitRunner'")
 
-    subprocess.Popen(["su -c 'am force-stop io.appium.uiautomator2.server.test'"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    subprocess.Popen(["su -c 'nohup am instrument -w io.appium.uiautomator2.server.test/androidx.test.runner.AndroidJUnitRunner'"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-
-    time.sleep(10)
+    await asyncio.sleep(10)
     logging.info("checking is uiautomator server running")
-    if not command('status'):
+    if not await command('status'):
         raise Exception("UIAutomator server not running.")
 
     logging.info("create new session")
-    sessionId = command("createSession", data={
-        "capabilities": {
-        }
-    })["sessionId"]
+    sessionId = (await command("createSession", data={
+        "capabilities": {}
+    }))["sessionId"]
 
     logging.info(str(sessionId))
     while True:
         os.system("su -c 'uiautomator dump view.xml'")
-
-        if permission == True:
-            time.sleep(2)
-            logging.info("true")
-            permission(sessionId)
+        if await permission(sessionId):  # İzin verildiyse devam et
+            logging.info("İzin verildi.")
+            await asyncio.sleep(2)
         else:
-            logging.info("false")
-            time.sleep(5)
-            permission(sessionId)
+            logging.info("İzin verilmedi.")
+            await asyncio.sleep(5)
 
 try:
-    run()
+    asyncio.run(run())
 
 except Exception as e:
     logging.error(str(e))
-    run()
-
+    asyncio.run(run())
